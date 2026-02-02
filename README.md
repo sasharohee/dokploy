@@ -52,15 +52,12 @@ Dokploy includes multiple features to make your life easier.
 
 Une fois le dépôt poussé sur GitHub (voir ci-dessous), exécutez **directement sur le NAS** (en root) :
 
-**Ports 80 et 443 libres :**
 ```bash
 curl -sSL https://raw.githubusercontent.com/sasharohee/dokploy/main/install.sh | sh
 ```
 
-**Port 80 déjà utilisé (ex. TNAS) :**
-```bash
-export TRAEFIK_PORT=8080 TRAEFIK_SSL_PORT=8443 && curl -sSL https://raw.githubusercontent.com/sasharohee/dokploy/main/install.sh | sh
-```
+- **Ports 80/443 libres** : Traefik utilise 80 et 443.
+- **Port 80 déjà utilisé** (ex. nginx sur TNAS) : le script détecte automatiquement et utilise **8080** (HTTP) et **8443** (HTTPS) pour Traefik.
 
 Puis ouvrir le dashboard : `http://<IP-du-NAS>:3000`.
 
