@@ -54,11 +54,55 @@ To get started, run the following command on a VPS:
 
 Want to skip the installation process? [Try the Dokploy Cloud](https://app.dokploy.com).
 
+**Install from this repo (recommended — supports custom ports):**
+
+```bash
+curl -sSL https://raw.githubusercontent.com/sasharohee/dokploy/main/install.sh | sh
+```
+
+**Port 80 already in use?** Use custom Traefik ports (e.g. 8080 for HTTP, 8443 for HTTPS):
+
+```bash
+export TRAEFIK_PORT=8080 TRAEFIK_SSL_PORT=8443 && curl -sSL https://raw.githubusercontent.com/sasharohee/dokploy/main/install.sh | sh
+```
+
+Then access the dashboard on port 3000; your apps will be reachable via ports 8080 (HTTP) and 8443 (HTTPS).
+
+**Alternative — official installer (requires ports 80, 443, 3000 free):**
+
 ```bash
 curl -sSL https://dokploy.com/install.sh | sh
 ```
 
 For detailed documentation, visit [docs.dokploy.com](https://docs.dokploy.com).
+
+### Installation depuis ce dépôt (NAS / port 80 occupé)
+
+1. **Pousser le code vers votre dépôt GitHub** (une seule fois, depuis votre machine) :
+
+```bash
+cd /chemin/vers/dokploy
+git remote add sasharohee https://github.com/sasharohee/dokploy.git
+git push sasharohee canary:main
+```
+
+(Si vous poussez uniquement `canary` avec `git push sasharohee canary`, utilisez `.../canary/install.sh` dans les commandes ci‑dessous au lieu de `.../main/install.sh`.)
+
+2. **Sur le NAS**, lancer l’installation depuis votre dépôt :
+
+**Ports 80/443 libres :**
+```bash
+curl -sSL https://raw.githubusercontent.com/sasharohee/dokploy/main/install.sh | sh
+```
+
+**Port 80 déjà utilisé (ex. TNAS) :**
+```bash
+export TRAEFIK_PORT=8080 TRAEFIK_SSL_PORT=8443 && curl -sSL https://raw.githubusercontent.com/sasharohee/dokploy/main/install.sh | sh
+```
+
+Exécuter en root (`sudo` si besoin). Puis ouvrir le dashboard sur `http://<IP-du-NAS>:3000`.
+
+**En cas d’erreur « 404 » :** le script n’est pas encore sur GitHub. Depuis votre machine, faites un commit et un push (étape 1) puis réessayez. Si vous avez poussé la branche `canary` (sans la renommer en `main`), utilisez `.../canary/install.sh` dans l’URL.
 
 ## ♥️ Sponsors
 

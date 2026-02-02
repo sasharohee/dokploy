@@ -1,0 +1,201 @@
+#!/bin/bash
+# Dokploy installation script
+# Supports custom Traefik ports via TRAEFIK_PORT and TRAEFIK_SSL_PORT (default: 80, 443)
+# Install from this repo: curl -sSL https://raw.githubusercontent.com/sasharohee/dokploy/main/install.sh | sh
+# Port 80 in use: export TRAEFIK_PORT=8080 TRAEFIK_SSL_PORT=8443 && curl -sSL https://raw.githubusercontent.com/sasharohee/dokploy/main/install.sh | sh
+
+set -e
+
+# Customizable ports (default: 80 and 443)
+TRAEFIK_PORT="${TRAEFIK_PORT:-80}"
+TRAEFIK_SSL_PORT="${TRAEFIK_SSL_PORT:-443}"
+
+install_dokploy() {
+	if [ "$(id -u)" != "0" ]; then
+		echo "This script must be run as root" >&2
+		exit 1
+	fi
+
+	if [ "$(uname)" = "Darwin" ]; then
+		echo "This script must be run on Linux" >&2
+		exit 1
+	fi
+
+	if [ -f /.dockerenv ]; then
+		echo "This script must not be run inside a container" >&2
+		exit 1
+	fi
+
+	# Check ports using configurable TRAEFIK_PORT and TRAEFIK_SSL_PORT
+	port_in_use() {
+		local port=$1
+		(ss -tulnp 2>/dev/null || true) | grep -q ":${port} " && return 0
+		(netstat -tulnp 2>/dev/null || true) | grep -q ":${port} " && return 0
+		return 1
+	}
+	if port_in_use "$TRAEFIK_PORT"; then
+		echo "Error: something is already running on port ${TRAEFIK_PORT}" >&2
+		echo "Use a different port: export TRAEFIK_PORT=8080 TRAEFIK_SSL_PORT=8443 && $0" >&2
+		exit 1
+	fi
+	if port_in_use "$TRAEFIK_SSL_PORT"; then
+		echo "Error: something is already running on port ${TRAEFIK_SSL_PORT}" >&2
+		echo "Use a different port: export TRAEFIK_SSL_PORT=8443 && $0" >&2
+		exit 1
+	fi
+	if port_in_use "3000"; then
+		echo "Error: something is already running on port 3000" >&2
+		echo "Dokploy requires port 3000 to be available. Please stop any service using this port." >&2
+		exit 1
+	fi
+
+	command_exists() {
+		command -v "$@" >/dev/null 2>&1
+	}
+
+	if command_exists docker; then
+		echo "Docker already installed"
+	else
+		curl -sSL https://get.docker.com | sh
+	fi
+
+	docker swarm leave --force 2>/dev/null || true
+
+	get_ip() {
+		local ip=""
+		ip=$(curl -4s --connect-timeout 5 https://ifconfig.io 2>/dev/null || true)
+		if [ -z "$ip" ]; then
+			ip=$(curl -4s --connect-timeout 5 https://icanhazip.com 2>/dev/null || true)
+		fi
+		if [ -z "$ip" ]; then
+			ip=$(curl -4s --connect-timeout 5 https://ipecho.net/plain 2>/dev/null || true)
+		fi
+		if [ -z "$ip" ]; then
+			ip=$(curl -6s --connect-timeout 5 https://ifconfig.io 2>/dev/null || true)
+		fi
+		if [ -z "$ip" ]; then
+			ip=$(curl -6s --connect-timeout 5 https://icanhazip.com 2>/dev/null || true)
+		fi
+		if [ -z "$ip" ]; then
+			ip=$(curl -6s --connect-timeout 5 https://ipecho.net/plain 2>/dev/null || true)
+		fi
+		echo "$ip"
+	}
+
+	advertise_addr="${ADVERTISE_ADDR:-$(get_ip)}"
+	if [ -z "$advertise_addr" ]; then
+		echo "Error: Could not determine server IP address. Set ADVERTISE_ADDR manually." >&2
+		echo "Example: export ADVERTISE_ADDR=192.168.1.100" >&2
+		exit 1
+	fi
+	echo "Using advertise address: $advertise_addr"
+	echo "Using Traefik HTTP port: ${TRAEFIK_PORT}, HTTPS port: ${TRAEFIK_SSL_PORT}"
+
+	docker swarm init --advertise-addr "$advertise_addr" ${DOCKER_SWARM_INIT_ARGS:-}
+	docker network rm dokploy-network 2>/dev/null || true
+	docker network create --driver overlay --attachable dokploy-network
+	echo "Network created"
+
+	mkdir -p /etc/dokploy
+	chmod 777 /etc/dokploy
+	mkdir -p /etc/dokploy/traefik/dynamic
+	touch /etc/dokploy/traefik/traefik.yml 2>/dev/null || true
+
+	POSTGRES_PASSWORD=$(openssl rand -base64 32 | tr -d "=+/" | cut -c1-32)
+	echo "$POSTGRES_PASSWORD" | docker secret create dokploy_postgres_password - 2>/dev/null || true
+	echo "Generated secure database credentials"
+
+	DOKPLOY_IMAGE="dokploy/dokploy:${DOKPLOY_VERSION:-latest}"
+	if [ -z "${DOKPLOY_VERSION:-}" ]; then
+		LATEST_VERSION=$(curl -sSfL https://api.github.com/repos/Dokploy/dokploy/releases/latest | grep -o '"tag_name": *"[^"]*"' | head -1 | sed 's/"tag_name": *"\(.*\)"/\1/')
+		if [ -n "$LATEST_VERSION" ]; then
+			DOKPLOY_IMAGE="dokploy/dokploy:${LATEST_VERSION}"
+			echo "Latest stable version detected: ${LATEST_VERSION}"
+		fi
+	fi
+	echo "Installing Dokploy image: $DOKPLOY_IMAGE"
+
+	docker service create \
+		--name dokploy-postgres \
+		--constraint 'node.role==manager' \
+		--network dokploy-network \
+		--env POSTGRES_USER=dokploy \
+		--env POSTGRES_DB=dokploy \
+		--secret source=dokploy_postgres_password,target=/run/secrets/postgres_password \
+		--env POSTGRES_PASSWORD_FILE=/run/secrets/postgres_password \
+		--mount type=volume,source=dokploy-postgres,target=/var/lib/postgresql/data \
+		postgres:16
+
+	docker service create \
+		--name dokploy-redis \
+		--constraint 'node.role==manager' \
+		--network dokploy-network \
+		--mount type=volume,source=dokploy-redis,target=/data \
+		redis:7
+
+	docker service create \
+		--name dokploy \
+		--replicas 1 \
+		--network dokploy-network \
+		--mount type=bind,source=/var/run/docker.sock,target=/var/run/docker.sock \
+		--mount type=bind,source=/etc/dokploy,target=/etc/dokploy \
+		--mount type=volume,source=dokploy,target=/root/.docker \
+		--secret source=dokploy_postgres_password,target=/run/secrets/postgres_password \
+		--publish published=3000,target=3000,mode=host \
+		--update-parallelism 1 \
+		--update-order stop-first \
+		--constraint 'node.role == manager' \
+		-e ADVERTISE_ADDR="$advertise_addr" \
+		-e POSTGRES_PASSWORD_FILE=/run/secrets/postgres_password \
+		-e TRAEFIK_PORT="$TRAEFIK_PORT" \
+		-e TRAEFIK_SSL_PORT="$TRAEFIK_SSL_PORT" \
+		"$DOKPLOY_IMAGE"
+
+	# Run Traefik with configurable host ports (publish TRAEFIK_PORT:80, TRAEFIK_SSL_PORT:443)
+	docker run -d \
+		--name dokploy-traefik \
+		--restart always \
+		-v /etc/dokploy/traefik/traefik.yml:/etc/traefik/traefik.yml \
+		-v /etc/dokploy/traefik/dynamic:/etc/dokploy/traefik/dynamic \
+		-v /var/run/docker.sock:/var/run/docker.sock:ro \
+		-p "${TRAEFIK_PORT}:80/tcp" \
+		-p "${TRAEFIK_SSL_PORT}:443/tcp" \
+		-p "${TRAEFIK_SSL_PORT}:443/udp" \
+		traefik:v3.6.7
+
+	docker network connect dokploy-network dokploy-traefik
+
+	GREEN="\033[0;32m"
+	YELLOW="\033[1;33m"
+	BLUE="\033[0;34m"
+	NC="\033[0m"
+	format_ip_for_url() {
+		if echo "$1" | grep -q ':'; then
+			echo "[${1}]"
+		else
+			echo "$1"
+		fi
+	}
+	formatted_addr=$(format_ip_for_url "$advertise_addr")
+	echo ""
+	printf "${GREEN}Congratulations, Dokploy is installed!${NC}\n"
+	printf "${BLUE}Wait 15 seconds for the server to start${NC}\n"
+	printf "${YELLOW}Dashboard: http://${formatted_addr}:3000${NC}\n"
+	if [ "$TRAEFIK_PORT" != "80" ] || [ "$TRAEFIK_SSL_PORT" != "443" ]; then
+		printf "${YELLOW}Traefik HTTP: port ${TRAEFIK_PORT}, HTTPS: port ${TRAEFIK_SSL_PORT}${NC}\n"
+	fi
+	echo ""
+}
+
+update_dokploy() {
+	echo "Updating Dokploy..."
+	docker pull dokploy/dokploy:latest
+	docker service update --image dokploy/dokploy:latest dokploy
+	echo "Dokploy has been updated to the latest version."
+}
+
+if [ "${1:-}" = "update" ]; then
+	update_dokploy
+else
+	install_dokploy
+fi
