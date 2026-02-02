@@ -43,34 +43,36 @@ install_dokploy() {
 		exit 1
 	fi
 
-	# If default ports 80/443 are in use, auto-pick first free from common alternatives
+	# If default ports 80/443 are in use, auto-pick first free (incl. 3005, 3006, etc.)
+	HTTP_PORTS="8080 8081 8082 8880 9080 3005 3006 3007 3008 10080 10081"
+	HTTPS_PORTS="8443 8444 8445 9443 9444 3443 3444 3445 10443 10444"
 	if [ "$TRAEFIK_PORT" = "80" ] && port_in_use "80"; then
-		TRAEFIK_PORT=$(find_free_port 8080 8081 8082 8880 9080 10080)
-		TRAEFIK_SSL_PORT=$(find_free_port 8443 8444 8445 9443 9444 10443)
-		[ -z "$TRAEFIK_PORT" ] && TRAEFIK_PORT=8080
-		[ -z "$TRAEFIK_SSL_PORT" ] && TRAEFIK_SSL_PORT=8443
+		TRAEFIK_PORT=$(find_free_port $HTTP_PORTS)
+		TRAEFIK_SSL_PORT=$(find_free_port $HTTPS_PORTS)
+		[ -z "$TRAEFIK_PORT" ] && TRAEFIK_PORT=3005
+		[ -z "$TRAEFIK_SSL_PORT" ] && TRAEFIK_SSL_PORT=3443
 		echo "Port 80 (and/or 443) in use. Using Traefik HTTP port ${TRAEFIK_PORT}, HTTPS port ${TRAEFIK_SSL_PORT}."
 	fi
 	if [ "$TRAEFIK_SSL_PORT" = "443" ] && port_in_use "443"; then
-		[ "$TRAEFIK_PORT" = "80" ] && TRAEFIK_PORT=$(find_free_port 8080 8081 8082 8880 9080 10080)
-		TRAEFIK_SSL_PORT=$(find_free_port 8443 8444 8445 9443 9444 10443)
-		[ -z "$TRAEFIK_SSL_PORT" ] && TRAEFIK_SSL_PORT=8443
+		[ "$TRAEFIK_PORT" = "80" ] && TRAEFIK_PORT=$(find_free_port $HTTP_PORTS)
+		TRAEFIK_SSL_PORT=$(find_free_port $HTTPS_PORTS)
+		[ -z "$TRAEFIK_SSL_PORT" ] && TRAEFIK_SSL_PORT=3443
 	fi
 	# Ensure HTTP and HTTPS ports differ
 	if [ "$TRAEFIK_PORT" = "$TRAEFIK_SSL_PORT" ]; then
-		TRAEFIK_SSL_PORT=$(find_free_port 8443 8444 9443 9444 10443)
-		[ -z "$TRAEFIK_SSL_PORT" ] && TRAEFIK_SSL_PORT=8443
+		TRAEFIK_SSL_PORT=$(find_free_port $HTTPS_PORTS)
+		[ -z "$TRAEFIK_SSL_PORT" ] && TRAEFIK_SSL_PORT=3443
 	fi
 
 	# Check that chosen ports are free
 	if port_in_use "$TRAEFIK_PORT"; then
 		echo "Error: something is already running on port ${TRAEFIK_PORT}" >&2
-		echo "Try: export TRAEFIK_PORT=8081 TRAEFIK_SSL_PORT=8444 && curl -sSL ... | sh" >&2
+		echo "Try: export TRAEFIK_PORT=3005 TRAEFIK_SSL_PORT=3443 && curl -sSL https://raw.githubusercontent.com/sasharohee/dokploy/main/install.sh | sh" >&2
 		exit 1
 	fi
 	if port_in_use "$TRAEFIK_SSL_PORT"; then
 		echo "Error: something is already running on port ${TRAEFIK_SSL_PORT}" >&2
-		echo "Try: export TRAEFIK_SSL_PORT=8444 && curl -sSL ... | sh" >&2
+		echo "Try: export TRAEFIK_PORT=3005 TRAEFIK_SSL_PORT=3443 && curl -sSL https://raw.githubusercontent.com/sasharohee/dokploy/main/install.sh | sh" >&2
 		exit 1
 	fi
 	if port_in_use "3000"; then
