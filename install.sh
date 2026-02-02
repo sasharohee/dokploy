@@ -16,6 +16,17 @@ port_in_use() {
 	return 1
 }
 
+# Find first free port from the list
+find_free_port() {
+	for p in "$@"; do
+		if ! port_in_use "$p"; then
+			echo "$p"
+			return 0
+		fi
+	done
+	return 1
+}
+
 install_dokploy() {
 	if [ "$(id -u)" != "0" ]; then
 		echo "This script must be run as root" >&2
@@ -32,26 +43,34 @@ install_dokploy() {
 		exit 1
 	fi
 
-	# If default ports 80/443 are in use (e.g. nginx), automatically use 8080 and 8443
+	# If default ports 80/443 are in use, auto-pick first free from common alternatives
 	if [ "$TRAEFIK_PORT" = "80" ] && port_in_use "80"; then
-		echo "Port 80 is already in use (e.g. nginx). Using 8080 and 8443 for Traefik."
-		TRAEFIK_PORT=8080
-		TRAEFIK_SSL_PORT=8443
+		TRAEFIK_PORT=$(find_free_port 8080 8081 8082 8880 9080 10080)
+		TRAEFIK_SSL_PORT=$(find_free_port 8443 8444 8445 9443 9444 10443)
+		[ -z "$TRAEFIK_PORT" ] && TRAEFIK_PORT=8080
+		[ -z "$TRAEFIK_SSL_PORT" ] && TRAEFIK_SSL_PORT=8443
+		echo "Port 80 (and/or 443) in use. Using Traefik HTTP port ${TRAEFIK_PORT}, HTTPS port ${TRAEFIK_SSL_PORT}."
 	fi
 	if [ "$TRAEFIK_SSL_PORT" = "443" ] && port_in_use "443"; then
-		[ "$TRAEFIK_PORT" = "80" ] && TRAEFIK_PORT=8080
-		TRAEFIK_SSL_PORT=8443
+		[ "$TRAEFIK_PORT" = "80" ] && TRAEFIK_PORT=$(find_free_port 8080 8081 8082 8880 9080 10080)
+		TRAEFIK_SSL_PORT=$(find_free_port 8443 8444 8445 9443 9444 10443)
+		[ -z "$TRAEFIK_SSL_PORT" ] && TRAEFIK_SSL_PORT=8443
+	fi
+	# Ensure HTTP and HTTPS ports differ
+	if [ "$TRAEFIK_PORT" = "$TRAEFIK_SSL_PORT" ]; then
+		TRAEFIK_SSL_PORT=$(find_free_port 8443 8444 9443 9444 10443)
+		[ -z "$TRAEFIK_SSL_PORT" ] && TRAEFIK_SSL_PORT=8443
 	fi
 
 	# Check that chosen ports are free
 	if port_in_use "$TRAEFIK_PORT"; then
 		echo "Error: something is already running on port ${TRAEFIK_PORT}" >&2
-		echo "Use a different port: export TRAEFIK_PORT=8080 TRAEFIK_SSL_PORT=8443 && ..." >&2
+		echo "Try: export TRAEFIK_PORT=8081 TRAEFIK_SSL_PORT=8444 && curl -sSL ... | sh" >&2
 		exit 1
 	fi
 	if port_in_use "$TRAEFIK_SSL_PORT"; then
 		echo "Error: something is already running on port ${TRAEFIK_SSL_PORT}" >&2
-		echo "Use a different port: export TRAEFIK_SSL_PORT=8443 && ..." >&2
+		echo "Try: export TRAEFIK_SSL_PORT=8444 && curl -sSL ... | sh" >&2
 		exit 1
 	fi
 	if port_in_use "3000"; then
