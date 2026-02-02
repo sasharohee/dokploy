@@ -48,49 +48,11 @@ Dokploy includes multiple features to make your life easier.
 - **Multi Server**: Deploy and manage your applications remotely to external servers.
 - **Self-Hosted**: Self-host Dokploy on your VPS.
 
-## 🚀 Getting Started
+## 🚀 Installation directe depuis le NAS (comme dokploy.com)
 
-To get started, run the following command on a VPS:
+Une fois le dépôt poussé sur GitHub (voir ci-dessous), exécutez **directement sur le NAS** (en root) :
 
-Want to skip the installation process? [Try the Dokploy Cloud](https://app.dokploy.com).
-
-**Install from this repo (recommended — supports custom ports):**
-
-```bash
-curl -sSL https://raw.githubusercontent.com/sasharohee/dokploy/main/install.sh | sh
-```
-
-**Port 80 already in use?** Use custom Traefik ports (e.g. 8080 for HTTP, 8443 for HTTPS):
-
-```bash
-export TRAEFIK_PORT=8080 TRAEFIK_SSL_PORT=8443 && curl -sSL https://raw.githubusercontent.com/sasharohee/dokploy/main/install.sh | sh
-```
-
-Then access the dashboard on port 3000; your apps will be reachable via ports 8080 (HTTP) and 8443 (HTTPS).
-
-**Alternative — official installer (requires ports 80, 443, 3000 free):**
-
-```bash
-curl -sSL https://dokploy.com/install.sh | sh
-```
-
-For detailed documentation, visit [docs.dokploy.com](https://docs.dokploy.com).
-
-### Installation depuis ce dépôt (NAS / port 80 occupé)
-
-1. **Pousser le code vers votre dépôt GitHub** (une seule fois, depuis votre machine) :
-
-```bash
-cd /chemin/vers/dokploy
-git remote add sasharohee https://github.com/sasharohee/dokploy.git
-git push sasharohee canary:main
-```
-
-(Si vous poussez uniquement `canary` avec `git push sasharohee canary`, utilisez `.../canary/install.sh` dans les commandes ci‑dessous au lieu de `.../main/install.sh`.)
-
-2. **Sur le NAS**, lancer l’installation depuis votre dépôt :
-
-**Ports 80/443 libres :**
+**Ports 80 et 443 libres :**
 ```bash
 curl -sSL https://raw.githubusercontent.com/sasharohee/dokploy/main/install.sh | sh
 ```
@@ -100,9 +62,37 @@ curl -sSL https://raw.githubusercontent.com/sasharohee/dokploy/main/install.sh |
 export TRAEFIK_PORT=8080 TRAEFIK_SSL_PORT=8443 && curl -sSL https://raw.githubusercontent.com/sasharohee/dokploy/main/install.sh | sh
 ```
 
-Exécuter en root (`sudo` si besoin). Puis ouvrir le dashboard sur `http://<IP-du-NAS>:3000`.
+Puis ouvrir le dashboard : `http://<IP-du-NAS>:3000`.
 
-**En cas d’erreur « 404 » :** le script n’est pas encore sur GitHub. Depuis votre machine, faites un commit et un push (étape 1) puis réessayez. Si vous avez poussé la branche `canary` (sans la renommer en `main`), utilisez `.../canary/install.sh` dans l’URL.
+---
+
+### ⚠️ Prérequis : pousser le dépôt sur GitHub (une seule fois)
+
+Pour que la commande `curl ... | sh` fonctionne depuis le NAS, le script doit être sur votre dépôt. **Sur votre Mac** (dans le dossier du projet) :
+
+```bash
+cd /Users/sasharohee/Downloads/dokploy
+git remote add sasharohee https://github.com/sasharohee/dokploy.git
+git add install.sh README.md
+git commit -m "Add install.sh with custom ports"   # si pas déjà fait
+git push sasharohee canary:main
+```
+
+- **Authentification HTTPS** : quand GitHub demande le mot de passe, utilisez un [Personal Access Token](https://github.com/settings/tokens) (Settings → Developer settings → Personal access tokens).
+- **Authentification SSH** : `git remote set-url sasharohee git@github.com:sasharohee/dokploy.git` puis `git push sasharohee canary:main`.
+
+Vérifier que le script est en ligne : ouvrir dans le navigateur  
+[https://raw.githubusercontent.com/sasharohee/dokploy/main/install.sh](https://raw.githubusercontent.com/sasharohee/dokploy/main/install.sh)  
+— vous devez voir le script, pas une page 404. Ensuite la commande `curl ... | sh` fonctionnera sur le NAS.
+
+---
+
+**Installateur officiel (ports 80, 443, 3000 libres) :**
+```bash
+curl -sSL https://dokploy.com/install.sh | sh
+```
+
+For detailed documentation, visit [docs.dokploy.com](https://docs.dokploy.com).
 
 ## ♥️ Sponsors
 
