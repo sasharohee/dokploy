@@ -93,34 +93,25 @@ install_dokploy() {
 
 	docker swarm leave --force 2>/dev/null || true
 
-	get_ip() {
+	# Docker Swarm requires a *local* interface IP (e.g. 192.168.x.x), not the public WAN IP.
+	get_local_ip() {
 		local ip=""
-		ip=$(curl -4s --connect-timeout 5 https://ifconfig.io 2>/dev/null || true)
-		if [ -z "$ip" ]; then
-			ip=$(curl -4s --connect-timeout 5 https://icanhazip.com 2>/dev/null || true)
-		fi
-		if [ -z "$ip" ]; then
-			ip=$(curl -4s --connect-timeout 5 https://ipecho.net/plain 2>/dev/null || true)
-		fi
-		if [ -z "$ip" ]; then
-			ip=$(curl -6s --connect-timeout 5 https://ifconfig.io 2>/dev/null || true)
-		fi
-		if [ -z "$ip" ]; then
-			ip=$(curl -6s --connect-timeout 5 https://icanhazip.com 2>/dev/null || true)
-		fi
-		if [ -z "$ip" ]; then
-			ip=$(curl -6s --connect-timeout 5 https://ipecho.net/plain 2>/dev/null || true)
-		fi
-		echo "$ip"
+		ip=$(hostname -I 2>/dev/null | awk '{print $1}')
+		[ -n "$ip" ] && echo "$ip" && return
+		ip=$(ip -4 route get 1 2>/dev/null | awk '{print $7; exit}')
+		[ -n "$ip" ] && echo "$ip" && return
+		ip=$(ip -4 addr show 2>/dev/null | grep -oE 'inet [0-9.]+' | grep -v '127.0.0.1' | head -1 | awk '{print $2}')
+		[ -n "$ip" ] && echo "$ip" && return
+		echo ""
 	}
 
-	advertise_addr="${ADVERTISE_ADDR:-$(get_ip)}"
+	advertise_addr="${ADVERTISE_ADDR:-$(get_local_ip)}"
 	if [ -z "$advertise_addr" ]; then
-		echo "Error: Could not determine server IP address. Set ADVERTISE_ADDR manually." >&2
+		echo "Error: Could not determine local IP address. Set ADVERTISE_ADDR manually (e.g. 192.168.1.100)." >&2
 		echo "Example: export ADVERTISE_ADDR=192.168.1.100" >&2
 		exit 1
 	fi
-	echo "Using advertise address: $advertise_addr"
+	echo "Using advertise address (local IP for Docker Swarm): $advertise_addr"
 	echo "Using Traefik HTTP port: ${TRAEFIK_PORT}, HTTPS port: ${TRAEFIK_SSL_PORT}"
 
 	docker swarm init --advertise-addr "$advertise_addr" ${DOCKER_SWARM_INIT_ARGS:-}
